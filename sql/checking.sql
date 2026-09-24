@@ -1,0 +1,31 @@
+SELECT
+    CURRENT_ACCOUNT() AS ACCOUNT,
+    CURRENT_USER() AS USER_NAME,
+    CURRENT_ROLE() AS ROLE_NAME,
+    CURRENT_REGION() AS REGION,
+    CURRENT_VERSION() AS VERSION;
+
+SHOW GRANTS TO ROLE ACCOUNTADMIN;
+
+SHOW CORTEX BASE MODELS
+IN SCHEMA SNOWFLAKE.MODELS;
+
+SHOW PARAMETERS LIKE 'CORTEX_ENABLED_CROSS_REGION'
+IN ACCOUNT;
+
+SHOW GRANTS TO ROLE ACCOUNTADMIN;
+
+
+USE ROLE ACCOUNTADMIN;
+
+SELECT AI_COMPLETE(
+    'llama3.1-8b',
+    'Explain transaction velocity monitoring in AML in one sentence.'
+) AS RESPONSE;
+
+USE ROLE ACCOUNTADMIN;
+
+SELECT AI_EMBED(
+    'snowflake-arctic-embed-m-v1.5',
+    'Multiple near-threshold transactions may indicate potential transaction structuring.'
+) AS EMBEDDING;
