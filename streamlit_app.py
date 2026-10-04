@@ -1321,42 +1321,44 @@ with tab_copilot:
     )
 
     # --------------------------------------------------------
-    # Existing conversation
+    # COPILOT INPUT
     # --------------------------------------------------------
+    # Inline form keeps the input at the top of this tab instead
+    # of moving it to the bottom of the entire Streamlit page.
 
-    for message_index, message in enumerate(
-        st.session_state.chat_messages
-    ):
-
-        role = message["role"]
-
-        with st.chat_message(
-            role
-        ):
-
-            if role == "user":
-
-                st.markdown(
-                    message["content"]
-                )
-
-            elif role == "assistant":
-
-                render_agent_response(
-                    message["response"],
-                    message_key=f"history_{message_index}"
-                )
-
-    # --------------------------------------------------------
-    # Chat input
-    # --------------------------------------------------------
-
-    user_prompt = st.chat_input(
-        "Ask RiskForge about this investigation..."
+    st.markdown(
+        "### Ask RiskForge"
     )
 
+    with st.form(
+        "copilot_form",
+        clear_on_submit=True
+    ):
+
+        prompt_col, button_col = st.columns(
+            [5, 1]
+        )
+
+        with prompt_col:
+
+            typed_prompt = st.text_input(
+                "Investigation question",
+                placeholder=(
+                    "e.g. Why is C00506 critical?"
+                ),
+                label_visibility="collapsed"
+            )
+
+        with button_col:
+
+            submit_prompt = st.form_submit_button(
+                "Send",
+                type="primary",
+                use_container_width=True
+            )
+
     # --------------------------------------------------------
-    # Pending prompt from clickable suggestion
+    # PENDING PROMPT FROM CLICKABLE SUGGESTION
     # --------------------------------------------------------
 
     pending_prompt = (
@@ -1366,14 +1368,20 @@ with tab_copilot:
         )
     )
 
-    prompt_to_process = (
-        pending_prompt
-        if pending_prompt
-        else user_prompt
-    )
+    if pending_prompt:
+
+        prompt_to_process = pending_prompt
+
+    elif submit_prompt:
+
+        prompt_to_process = typed_prompt
+
+    else:
+
+        prompt_to_process = None
 
     # --------------------------------------------------------
-    # Process message
+    # PROCESS PROMPT
     # --------------------------------------------------------
 
     if prompt_to_process:
@@ -1401,119 +1409,131 @@ with tab_copilot:
                 }
             )
 
-            with st.chat_message(
-                "user"
-            ):
-
-                st.markdown(
-                    clean_prompt
-                )
-
             # ------------------------------------------------
-            # Agent response
+            # Call Agent
             # ------------------------------------------------
 
-            with st.chat_message(
-                "assistant"
-            ):
+            try:
 
                 with st.spinner(
                     "RiskForge is investigating..."
                 ):
 
-                    try:
+                    agent_response = (
+                        call_riskforge_agent(
+                            prompt=clean_prompt,
 
-                        agent_response = (
-                            call_riskforge_agent(
-                                prompt=clean_prompt,
+                            thread_id=(
+                                st.session_state.agent_thread_id
+                            ),
 
-                                thread_id=(
-                                    st.session_state.agent_thread_id
-                                ),
-
-                                parent_message_id=(
-                                    st.session_state.parent_message_id
-                                )
+                            parent_message_id=(
+                                st.session_state.parent_message_id
                             )
                         )
+                    )
 
-                        # ----------------------------------------
-                        # Metadata
-                        # ----------------------------------------
+                # --------------------------------------------
+                # Read metadata
+                # --------------------------------------------
 
-                        metadata = (
-                            agent_response.get(
-                                "metadata",
-                                {}
-                            )
-                        )
+                metadata = (
+                    agent_response.get(
+                        "metadata",
+                        {}
+                    )
+                )
 
-                        returned_thread_id = (
-                            metadata.get(
-                                "thread_id"
-                            )
-                        )
+                returned_thread_id = (
+                    metadata.get(
+                        "thread_id"
+                    )
+                )
 
-                        assistant_message_id = (
-                            metadata.get(
-                                "assistant_message_id"
-                            )
-                        )
+                assistant_message_id = (
+                    metadata.get(
+                        "assistant_message_id"
+                    )
+                )
 
-                        # ----------------------------------------
-                        # Synchronize thread
-                        # ----------------------------------------
+                # --------------------------------------------
+                # Synchronize thread
+                # --------------------------------------------
 
-                        if returned_thread_id is not None:
+                if returned_thread_id is not None:
 
-                            st.session_state.agent_thread_id = (
-                                returned_thread_id
-                            )
+                    st.session_state.agent_thread_id = (
+                        returned_thread_id
+                    )
 
-                        if assistant_message_id is None:
+                if assistant_message_id is None:
 
-                            raise RuntimeError(
-                                "Agent response did not contain "
-                                "assistant_message_id."
-                            )
+                    raise RuntimeError(
+                        "Agent response did not contain "
+                        "assistant_message_id."
+                    )
 
-                        st.session_state.parent_message_id = (
-                            assistant_message_id
-                        )
+                st.session_state.parent_message_id = (
+                    assistant_message_id
+                )
 
-                        # ----------------------------------------
-                        # Save latest Agent response
-                        # ----------------------------------------
+                # --------------------------------------------
+                # Save latest Agent response
+                # --------------------------------------------
 
-                        st.session_state.latest_agent_response = (
-                            agent_response
-                        )
+                st.session_state.latest_agent_response = (
+                    agent_response
+                )
 
-                        # ----------------------------------------
-                        # Render
-                        # ----------------------------------------
+                # --------------------------------------------
+                # Save conversation
+                # --------------------------------------------
 
-                        render_agent_response(
-                            agent_response,
-                            message_key="live"
-                        )
+                st.session_state.chat_messages.append(
+                    {
+                        "role": "assistant",
+                        "response": agent_response
+                    }
+                )
 
-                        # ----------------------------------------
-                        # Save conversation
-                        # ----------------------------------------
+            except Exception as e:
 
-                        st.session_state.chat_messages.append(
-                            {
-                                "role": "assistant",
-                                "response": agent_response
-                            }
-                        )
+                st.error(
+                    f"Unable to call RiskForge Agent: {str(e)}"
+                )
 
-                    except Exception as e:
+    # --------------------------------------------------------
+    # CONVERSATION HISTORY
+    # --------------------------------------------------------
 
-                        st.error(
-                            f"Unable to call RiskForge Agent: {str(e)}"
-                        )
+    st.divider()
+
+    st.markdown(
+        "### Conversation"
+    )
+
+    for message_index, message in enumerate(
+        st.session_state.chat_messages
+    ):
+
+        role = message["role"]
+
+        with st.chat_message(
+            role
+        ):
+
+            if role == "user":
+
+                st.markdown(
+                    message["content"]
+                )
+
+            elif role == "assistant":
+
+                render_agent_response(
+                    message["response"],
+                    message_key=f"history_{message_index}"
+                )
 
 
 # ============================================================
